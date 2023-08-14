@@ -11,36 +11,57 @@ class CustomPaginator extends LengthAwarePaginator
      */
     public function links($view = null, $data = [])
     {
-        // Aggiungi tutti i parametri di query alle link del paginatore.
+        // Aggiunge i parametri di query al paginatore
         $this->appends(\Request::all());
     
         $window = \Illuminate\Pagination\UrlWindow::make($this);
-    
-        // Il layout del paginatore mantiene un numero totale di elementi costante. 
-        // Considerando la struttura base di quando abbiamo più di 'onEachSide' elementi 
-        // sia a sinistra che a destra dell'elemento corrente, questa prevede:
-        // 1. Tre elementi fissi a sinistra, rappresentati da (1, 2 e "...").
-        // 2. L'elemento corrente al centro, affiancato da 'onEachSide' elementi per lato.
-        // 3. Tre elementi fissi a destra, speculari rispetto ai primi tre.
+
+        // Il paginatore garantisce un numero fisso di elementi nel layout.
         //
-        // Se tutti gli elementi sono concentrati solo a sinistra o solo a destra dell'elemento corrente,
-        // il calcolo di 'onEachSide' necessita di alcune modifiche. Nello specifico:
-        // - Si escludono i tre elementi estremi, poiché verranno rimpiazzati da (1, 2 e "...").
-        // - Si esclude anche l'elemento corrente.
-        // Infine, il risultato viene diviso per due per ottenere il valore di 'onEachSide'.
-        $onEachSide = (count($window['first']) - 4) / 2;
+        // Con $window['slider'] popolato, la disposizione si presenta così:
+        // 1. $window['first']: ha due elementi fissi a sinistra (1, 2).
+        // 2. $window['slider']: mostra l'elemento corrente, circondato da 'onEachSide' elementi per lato.
+        // 3. $window['last']: ha due elementi fissi a destra, speculari agli elementi di $window['first'].
+        //
+        // L'elemento "..." è un delimitatore predefinito del paginatore per indicare ulteriori pagine tra i gruppi. 
+        // Se si modifica il metodo link, "..." deve essere aggiunto manualmente.
+        //
+        // Con $window['slider'] popolato, avremo due delimitatori "..." attorno allo slider; 
+        // altrimenti, solo uno tra $window['first'] e $window['last'].
+        //
+        // Se $window['slider'] non è presente, abbiamo:
+        // 1. $window['first']: due elementi fissi o una composizione di due elementi, un sostituto per "...", l'elemento corrente e 'onEachSide' elementi.
+        // 2. $window['slider']: sempre null.
+        // 3. $window['last']: due elementi fissi o una disposizione simile a $window['first'], ma speculare.
+        //
+        // Per mantenere la consistenza:
+        // - In assenza dello slider, $window['first'] o $window['last'] conterranno una quantità di elementi equivalente a quello dello slider, 
+        // più i due elementi fissi e un elemento che sostituisce un "...". 
+        $fixedElements = 3;
+        if (isset($window['slider'])) {
+            $onEachSide = (count($window['slider']) - 1) / 2; // -1 per l'elemento corrente
+        } else {
+            $onEachSide = (count($window['first']) - $fixedElements - 1) / 2; // -1 per l'elemento corrente
+        }
 
         $firstElement = $this->currentPage() - $onEachSide > 0 ? $this->currentPage() - $onEachSide : 1;
 
+        // 1. Se `$window['first']` ha solo due elementi, non vogliamo aggiungerlo all'output.
+        // 2. Se ci sono "..." a sinistra dell'elemento corrente (indicando elementi omessi), non li includiamo.
+        // 3. Quando `$window['first']` ha più di due elementi, vogliamo assicurarci che il totale degli elementi rimanga consistente.
+        //    Per fare ciò, eliminiamo tre elementi da `$window['first']`.
+        // 4. La funzione `array_slice` viene utilizzata per ottenere una porzione di `$window['first']` basata sull'elemento corrente e 
+        //    sulla sua posizione relativa. Questo ci permette di mantenere una dimensione costante per la paginazione visualizzata.
+        $startIndex = $firstElement - 1;
         $elements = array_filter([
             count($window['first']) > 2 
-                ? array_slice($window['first'], $firstElement - 1, count($window['first']) - 3, true) 
+                ? array_slice($window['first'], $startIndex, count($window['first'] - $fixedElements /*or $onEachSide*2 + 1*/), true) 
                 : null,
             $window['slider'],
             count($window['last']) == 2 ? '...' : null,
             $window['last']
         ]);
-    
+        
         // Resetta le chiavi dell'array
         $elements = array_values($elements);
     
